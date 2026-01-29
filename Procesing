@@ -1,0 +1,84 @@
+import processing.serial.*;
+
+Serial myPort;
+String data = "";
+int iAngle = 0;      // ángulo real del servo
+float iDistance = 0; // distancia medida por el sensor
+
+void setup() {
+  size(1000, 500);
+  smooth();
+  
+  myPort = new Serial(this, "/dev/cu.usbmodem14201", 9600);
+  myPort.bufferUntil('\n'); // leer línea completa
+  background(0);
+}
+
+void draw() {
+  // Fondo con efecto rastro
+  noStroke();
+  fill(0, 15);
+  rect(0, 0, width, height);
+  
+  drawRadar();
+  
+  // Dibuja la barra verde usando el ángulo real del servo
+  drawSweep(iAngle, color(30, 250, 60));
+  
+  // Dibuja obstáculo rojo si la distancia indica objeto cercano
+  if (iDistance > 0 && iDistance < 40) {
+    drawObject(iAngle, iDistance);
+  }
+}
+
+// --- Lectura serial ---
+void serialEvent(Serial myPort) {
+  data = myPort.readStringUntil('\n');
+  if (data != null) {
+    data = data.trim(); // eliminar espacios y saltos
+    int index = data.indexOf(",");
+    if (index > 0) {
+      iAngle = int(data.substring(0, index));
+      iDistance = float(data.substring(index + 1));
+      println("Ángulo: " + iAngle + " | Distancia: " + iDistance); // debug
+    }
+  }
+}
+
+// Radar semicircular
+void drawRadar() {
+  pushMatrix();
+  translate(width/2, height); 
+  noFill();
+  strokeWeight(2);
+  stroke(98, 245, 31, 60);
+  arc(0, 0, 800, 800, PI, TWO_PI);
+  arc(0, 0, 600, 600, PI, TWO_PI);
+  arc(0, 0, 400, 400, PI, TWO_PI);
+  arc(0, 0, 200, 200, PI, TWO_PI);
+  line(-400, 0, 400, 0);
+  popMatrix();
+}
+
+// Dibuja barra verde sincronizada con el servo
+void drawSweep(int angle, color c) {
+  pushMatrix();
+  translate(width/2, height);
+  strokeWeight(8);
+  stroke(c);
+  float rad = map(angle, 0, 180, PI, TWO_PI);
+  line(0, 0, 400*cos(rad), 400*sin(rad));
+  popMatrix();
+}
+
+// Dibuja obstáculo rojo
+void drawObject(int angle, float distance) {
+  pushMatrix();
+  translate(width/2, height);
+  strokeWeight(8);
+  stroke(255, 10, 10); 
+  float pixsDistance = distance * 10; 
+  float rad = map(angle, 0, 180, PI, TWO_PI);
+  line(pixsDistance*cos(rad), pixsDistance*sin(rad), 400*cos(rad), 400*sin(rad));
+  popMatrix();
+}
