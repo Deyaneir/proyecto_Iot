@@ -1,84 +1,134 @@
 import processing.serial.*;
 
 Serial myPort;
-String data = "";
-int iAngle = 0;      // ángulo real del servo
-float iDistance = 0; // distancia medida por el sensor
+String val;
+float angulo = 0;
+float distancia = 0;
+int pir = 0;
+int ir = 1;
+ArrayList<Punto> puntos = new ArrayList<Punto>();
 
 void setup() {
-  size(1000, 500);
-  smooth();
+  size(800, 450);
+  println(Serial.list());
+  try {
+    String portName = Serial.list()[0]; 
+    myPort = new Serial(this, portName, 9600);
+    myPort.bufferUntil('\n');
+  } catch (Exception e) {
+    println("Error: No se pudo abrir el puerto serial.");
+  }
   
-  myPort = new Serial(this, "/dev/cu.usbmodem14201", 9600);
-  myPort.bufferUntil('\n'); // leer línea completa
-  background(0);
+  background(5);
 }
 
 void draw() {
-  // Fondo con efecto rastro
+  // Fondo con rastro (efecto estela)
+  fill(5, 20);
   noStroke();
-  fill(0, 15);
   rect(0, 0, width, height);
   
-  drawRadar();
-  
-  // Dibuja la barra verde usando el ángulo real del servo
-  drawSweep(iAngle, color(30, 250, 60));
-  
-  // Dibuja obstáculo rojo si la distancia indica objeto cercano
-  if (iDistance > 0 && iDistance < 40) {
-    drawObject(iAngle, iDistance);
+  dibujarRadar();
+  dibujarPuntos();
+  dibujarLineaBarrido();
+}
+
+void serialEvent(Serial myPort) {
+  try {
+    val = myPort.readStringUntil('\n');
+    if (val != null) {
+      val = trim(val);
+      println("Recibido: " + val); // Depuración en consola
+      
+      String[] lista = split(val, ',');
+      if (lista.length >= 2) {
+        angulo = float(lista[0]);
+        distancia = float(lista[1]);
+
+        if (lista.length >= 4) {
+          pir = int(lista[2]);
+          ir = int(lista[3]);
+        }
+        
+        // Solo agregar punto si hay un objeto cerca (máximo 40cm para escala)
+        if (distancia > 1 && distancia < 40) {
+          puntos.add(new Punto(angulo, distancia));
+        }
+      }
+    }
+  } catch (Exception e) {
+    println("Error al procesar datos seriales");
   }
 }
 
-// --- Lectura serial ---
-void serialEvent(Serial myPort) {
-  data = myPort.readStringUntil('\n');
-  if (data != null) {
-    data = data.trim(); // eliminar espacios y saltos
-    int index = data.indexOf(",");
-    if (index > 0) {
-      iAngle = int(data.substring(0, index));
-      iDistance = float(data.substring(index + 1));
-      println("Ángulo: " + iAngle + " | Distancia: " + iDistance); // debug
+void dibujarRadar() {
+  pushMatrix();
+  translate(width/2, height);
+  stroke(0, 200, 0, 50);
+  noFill();
+  strokeWeight(1);
+  
+  // Arcos de distancia
+  for (int r = 100; r <= 400; r += 100) {
+    arc(0, 0, r*2, r*2, PI, TWO_PI);
+  }
+  
+  // Líneas de ángulo
+  for (int a = 30; a <= 150; a += 30) {
+    float x = cos(radians(-a)) * 400;
+    float y = sin(radians(-a)) * 400;
+    line(0, 0, x, y);
+  }
+  popMatrix();
+}
+
+void dibujarLineaBarrido() {
+  pushMatrix();
+  translate(width/2, height);
+  strokeWeight(3);
+  stroke(0, 255, 0);
+
+  // Mapeamos el ángulo del servo 
+  float rad = radians(180 - angulo);
+  line(0, 0, cos(rad) * 400, -sin(rad) * 400);
+  popMatrix();
+}
+
+void dibujarPuntos() {
+  pushMatrix();
+  translate(width/2, height);
+  
+  for (int i = puntos.size() - 1; i >= 0; i--) {
+    Punto p = puntos.get(i);
+    float rad = radians(180 - p.ang);
+    // Escala: 40cm es el máximo (400 pixeles)
+    float d = map(p.dist, 0, 40, 0, 400);
+    
+    float x = cos(rad) * d;
+    float y = -sin(rad) * d;
+    
+    noStroke();
+    fill(255, 0, 0, p.vida);
+    ellipse(x, y, 6, 6);
+    
+    p.actualizar();
+    if (p.vida <= 0) {
+      puntos.remove(i);
     }
   }
-}
-
-// Radar semicircular
-void drawRadar() {
-  pushMatrix();
-  translate(width/2, height); 
-  noFill();
-  strokeWeight(2);
-  stroke(98, 245, 31, 60);
-  arc(0, 0, 800, 800, PI, TWO_PI);
-  arc(0, 0, 600, 600, PI, TWO_PI);
-  arc(0, 0, 400, 400, PI, TWO_PI);
-  arc(0, 0, 200, 200, PI, TWO_PI);
-  line(-400, 0, 400, 0);
   popMatrix();
 }
 
-// Dibuja barra verde sincronizada con el servo
-void drawSweep(int angle, color c) {
-  pushMatrix();
-  translate(width/2, height);
-  strokeWeight(8);
-  stroke(c);
-  float rad = map(angle, 0, 180, PI, TWO_PI);
-  line(0, 0, 400*cos(rad), 400*sin(rad));
-  popMatrix();
-}
-
-// Dibuja obstáculo rojo
-void drawObject(int angle, float distance) {
-  pushMatrix();
-  translate(width/2, height);
-  strokeWeight(8);
-  stroke(255, 10, 10); 
-  float pixsDistance = distance * 10; 
-  float rad = map(angle, 0, 180, PI, TWO_PI);
-  line(pixsDistance*cos(rad), pixsDistance*sin(rad), 400*cos(rad), 400*sin(rad));
-  popMatrix();
+class Punto {
+  float ang, dist, vida;
+  
+  Punto(float a, float d) {
+    ang = a;
+    dist = d;
+    vida = 255;
+  }
+  
+  void actualizar() {
+    vida -= 2; // Velocidad de desvanecimiento
+  }
 }
