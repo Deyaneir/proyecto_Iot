@@ -1,93 +1,79 @@
 #include <Servo.h>
+#include <SoftwareSerial.h>
 
-// ===== PINES =====
+// PINES
 const int pinPIR = 2;
 const int led1 = 4;
 const int led2 = 3;
-
 const int trigPin = 6;
 const int echoPin = 7;
-const int pinIR = 11;
-const int pinBuzzer = 8; // Pin para el Buzzer
-
+const int pinIR = 9;
+const int pinBuzzer = 8;
 const int servoBarridoPin = 5;
 const int servoIRPin = 10;
 
-// ===== SERVOS =====
+SoftwareSerial wifi(11, 12); 
+
 Servo servoBarrido;
 Servo servoIR;
 
-// ===== VARIABLES RADAR =====
 int angulo = 0;
-int paso = 2; 
+int paso = 2;
 
 void setup() {
   pinMode(pinPIR, INPUT);
+  pinMode(pinIR, INPUT);
   pinMode(led1, OUTPUT);
   pinMode(led2, OUTPUT);
-  pinMode(pinBuzzer, OUTPUT); // Configurar buzzer como salida
-
+  pinMode(pinBuzzer, OUTPUT);
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
-  pinMode(pinIR, INPUT); 
 
   servoBarrido.attach(servoBarridoPin);
   servoIR.attach(servoIRPin);
 
-  servoBarrido.write(0);
-  servoIR.write(0);
-
-  Serial.begin(9600);
-  Serial.println("Sistema con Buzzer Listo");
+  Serial.begin(9600); 
+  wifi.begin(9600);  
+  
+  wifi.println("AT"); 
 }
 
 void loop() {
-  // 1. PIR + LEDs 
   int estadoPIR = digitalRead(pinPIR);
-  if (estadoPIR == HIGH) {
-    digitalWrite(led1, HIGH);
-    digitalWrite(led2, HIGH);
+  digitalWrite(led1, estadoPIR);
+  digitalWrite(led2, estadoPIR);
+
+  int estadoIR = digitalRead(pinIR);
+  if (estadoIR == LOW) {
+    servoIR.write(90);
+    tone(pinBuzzer, 1000);
   } else {
-    digitalWrite(led1, LOW);
-    digitalWrite(led2, LOW);
+    servoIR.write(0);
+    noTone(pinBuzzer);
   }
 
-  // 2. SENSOR IR + SERVO IR + BUZZER
-  int estadoIR = digitalRead(pinIR); 
-  if (estadoIR == LOW) {   // Si detecta obstáculo
-    servoIR.write(90);    
-    tone(pinBuzzer, 1000); // Activa el buzzer a 1000Hz
-  } else {
-    servoIR.write(0);     
-    noTone(pinBuzzer);     // Apaga el buzzer
-  }
-
-  // 3. RADAR 
-  moverRadar();
-
-  delay(15); 
+  moverRadar(estadoPIR, estadoIR);
+  delay(20);
 }
 
-void moverRadar() {
+void moverRadar(int pir, int ir) {
   servoBarrido.write(angulo);
-  
+
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
 
-  long duracion = pulseIn(echoPin, HIGH, 20000); 
-  float distancia = (duracion * 0.0343) / 2.0;
+  long duracion = pulseIn(echoPin, HIGH, 30000);
+  float distancia = (duracion > 0) ? (duracion * 0.0343 / 2.0) : 0;
+  String data = String(angulo) + "," + String(distancia) + "," + String(pir) + "," + String(ir);
 
-  // Los datos para Python siguen iguales
-  Serial.print(angulo);
-  Serial.print(",");
-  Serial.print(distancia);
-  Serial.print(",");
-  Serial.print(digitalRead(pinPIR));
-  Serial.print(",");
-  Serial.println(digitalRead(pinIR));
+  // ENVIAR LA DATA A PC
+  Serial.println(data);
+
+  // ENVIAR A WIFI (
+  wifi.println(data);
 
   angulo += paso;
   if (angulo >= 180 || angulo <= 0) {
